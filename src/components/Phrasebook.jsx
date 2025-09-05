@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { MessageSquare, Copy, Play, Lock, Globe, Search } from 'lucide-react'
+import { MessageSquare, Copy, Play, Lock, Globe, Search, Loader2, Sparkles } from 'lucide-react'
+import apiService from '../services/api'
 
 const Phrasebook = ({ user, onUpgradeNeeded }) => {
   const [scripts, setScripts] = useState([])
@@ -7,6 +8,9 @@ const Phrasebook = ({ user, onUpgradeNeeded }) => {
   const [selectedLanguage, setSelectedLanguage] = useState('en')
   const [searchTerm, setSearchTerm] = useState('')
   const [copiedScript, setCopiedScript] = useState(null)
+  const [customScenario, setCustomScenario] = useState('')
+  const [generatingScript, setGeneratingScript] = useState(false)
+  const [generatedScripts, setGeneratedScripts] = useState([])
 
   // Mock scripts data
   const scriptData = {
@@ -131,7 +135,38 @@ const Phrasebook = ({ user, onUpgradeNeeded }) => {
     }
   }
 
-  const filteredScripts = scripts.filter(script =>
+  const generateCustomScript = async () => {
+    if (!customScenario.trim() || generatingScript) return
+
+    setGeneratingScript(true)
+    try {
+      const result = await apiService.generateScript(
+        customScenario,
+        selectedLanguage,
+        user.currentState
+      )
+
+      const newScript = {
+        id: `generated-${Date.now()}`,
+        scenario: `Custom: ${customScenario.substring(0, 50)}${customScenario.length > 50 ? '...' : ''}`,
+        scriptText: result.scriptText,
+        premium: false,
+        generated: true,
+        timestamp: result.timestamp
+      }
+
+      setGeneratedScripts(prev => [newScript, ...prev])
+      setCustomScenario('')
+    } catch (error) {
+      console.error('Error generating script:', error)
+      // Could add toast notification here
+    } finally {
+      setGeneratingScript(false)
+    }
+  }
+
+  const allScripts = [...scripts, ...generatedScripts]
+  const filteredScripts = allScripts.filter(script =>
     script.scenario.toLowerCase().includes(searchTerm.toLowerCase()) ||
     script.scriptText.toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -218,6 +253,42 @@ const Phrasebook = ({ user, onUpgradeNeeded }) => {
               />
             </div>
           </div>
+
+          {/* AI Script Generation */}
+          {user.subscriptionStatus === 'premium' && (
+            <div className="border-t border-border pt-6">
+              <label className="block text-sm font-medium text-textPrimary mb-2">
+                <Sparkles className="h-4 w-4 inline mr-1" />
+                Generate Custom Script
+              </label>
+              <div className="space-y-3">
+                <textarea
+                  placeholder="Describe your specific scenario (e.g., 'Being questioned at a protest', 'Stopped while walking at night')..."
+                  value={customScenario}
+                  onChange={(e) => setCustomScenario(e.target.value)}
+                  className="input min-h-[80px] resize-none"
+                  rows={3}
+                />
+                <button
+                  onClick={generateCustomScript}
+                  disabled={!customScenario.trim() || generatingScript}
+                  className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {generatingScript ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Generate Script
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -236,6 +307,12 @@ const Phrasebook = ({ user, onUpgradeNeeded }) => {
                   <h3 className="text-lg font-semibold text-textPrimary mb-2 flex items-center gap-2">
                     <MessageSquare className="h-5 w-5" />
                     {script.scenario}
+                    {script.generated && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-accent/10 text-accent text-xs font-medium rounded-full">
+                        <Sparkles className="h-3 w-3" />
+                        AI Generated
+                      </span>
+                    )}
                     {isPremiumScript(script) && (
                       <Lock className="h-4 w-4 text-textSecondary" />
                     )}

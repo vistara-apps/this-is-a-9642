@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { X, Check, Star, Lock } from 'lucide-react'
+import { X, Check, Star, Lock, Loader2, CreditCard } from 'lucide-react'
+import stripeService from '../services/stripeService'
 
 const SubscriptionModal = ({ onClose, onUpgrade }) => {
   const [selectedPlan, setSelectedPlan] = useState('monthly')
@@ -46,14 +47,38 @@ const SubscriptionModal = ({ onClose, onUpgrade }) => {
   const handleUpgrade = async () => {
     setLoading(true)
     
-    // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // In a real app, this would integrate with Stripe
-    console.log('Processing payment for:', plans[selectedPlan])
-    
-    onUpgrade()
-    setLoading(false)
+    try {
+      // Get subscription plans from Stripe service
+      const stripePlans = stripeService.getSubscriptionPlans()
+      const plan = stripePlans.premium
+      
+      // Create checkout session
+      const session = await stripeService.createCheckoutSession(
+        'premium',
+        'user-id', // In real app, this would be the actual user ID
+        window.location.origin + '/success',
+        window.location.origin + '/cancel'
+      )
+
+      if (session.mock) {
+        // Mock successful payment for demo
+        console.log('Mock payment processing for:', plan)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        onUpgrade()
+      } else {
+        // Redirect to Stripe Checkout
+        const { error } = await stripeService.redirectToCheckout(session.id)
+        if (error) {
+          console.error('Stripe error:', error)
+          alert('Payment failed. Please try again.')
+        }
+      }
+    } catch (error) {
+      console.error('Error processing payment:', error)
+      alert('Payment failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

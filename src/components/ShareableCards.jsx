@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Share2, Download, Copy, Eye, Calendar, MapPin, Clock, FileText } from 'lucide-react'
+import { Share2, Download, Copy, Eye, Calendar, MapPin, Clock, FileText, Loader2, Sparkles } from 'lucide-react'
+import apiService from '../services/api'
 
 const ShareableCards = ({ incidents, user }) => {
   const [selectedIncident, setSelectedIncident] = useState(null)
@@ -8,27 +9,43 @@ const ShareableCards = ({ incidents, user }) => {
   const generateCard = async (incident) => {
     setGeneratingCard(true)
     
-    // Simulate card generation
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    const cardData = {
-      id: Date.now(),
-      incidentId: incident.recordId,
-      title: 'Police Encounter Documentation',
-      summary: incident.userNotes || 'Police encounter recorded',
-      location: incident.location ? 
-        `${incident.location.latitude.toFixed(4)}, ${incident.location.longitude.toFixed(4)}` : 
-        'Location not recorded',
-      timestamp: new Date(incident.timestamp).toLocaleString(),
-      duration: incident.duration ? `${Math.floor(incident.duration / 60)}:${(incident.duration % 60).toString().padStart(2, '0')}` : 'N/A',
-      state: user.currentState,
-      recordingType: incident.recordingType || 'none',
-      hasRecording: !!incident.recordedData,
-      alertSent: incident.alertSent || false
+    try {
+      // Generate AI summary if user has premium
+      let aiSummary = incident.userNotes || 'Police encounter recorded'
+      if (user.subscriptionStatus === 'premium') {
+        try {
+          aiSummary = await apiService.generateIncidentSummary(incident)
+        } catch (error) {
+          console.error('Error generating AI summary:', error)
+          // Fall back to user notes or default
+        }
+      }
+
+      const cardData = {
+        id: Date.now(),
+        incidentId: incident.recordId,
+        title: 'Police Encounter Documentation',
+        summary: aiSummary,
+        location: incident.location ? 
+          `${incident.location.latitude.toFixed(4)}, ${incident.location.longitude.toFixed(4)}` : 
+          'Location not recorded',
+        timestamp: new Date(incident.timestamp).toLocaleString(),
+        duration: incident.duration ? `${Math.floor(incident.duration / 60)}:${(incident.duration % 60).toString().padStart(2, '0')}` : 'N/A',
+        state: user.currentState,
+        recordingType: incident.recordingType || 'none',
+        hasRecording: !!incident.recordedData,
+        alertSent: incident.alertSent || false,
+        ipfsUrl: incident.ipfsUrl || null,
+        aiGenerated: user.subscriptionStatus === 'premium'
+      }
+      
+      return cardData
+    } catch (error) {
+      console.error('Error generating card:', error)
+      return null
+    } finally {
+      setGeneratingCard(false)
     }
-    
-    setGeneratingCard(false)
-    return cardData
   }
 
   const shareCard = async (incident) => {
