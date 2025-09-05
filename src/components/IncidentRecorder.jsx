@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Mic, Video, Square, MapPin, Clock, AlertTriangle, Send } from 'lucide-react'
+import { Mic, Video, Square, MapPin, Clock, AlertTriangle, Send, Upload, Loader2 } from 'lucide-react'
+import apiService from '../services/api'
+import dataService from '../services/dataService'
 
 const IncidentRecorder = ({ user, onIncidentRecorded }) => {
   const [isRecording, setIsRecording] = useState(false)
@@ -10,10 +12,10 @@ const IncidentRecorder = ({ user, onIncidentRecorded }) => {
   const [recordedData, setRecordedData] = useState([])
   const [location, setLocation] = useState(null)
   const [notes, setNotes] = useState('')
-  const [emergencyContacts, setEmergencyContacts] = useState([
-    { name: 'Emergency Contact', phone: '+1234567890' }
-  ])
+  const [emergencyContacts, setEmergencyContacts] = useState([])
   const [alertSent, setAlertSent] = useState(false)
+  const [uploadingToIPFS, setUploadingToIPFS] = useState(false)
+  const [ipfsUrl, setIpfsUrl] = useState(null)
 
   const videoRef = useRef(null)
   const timerRef = useRef(null)
@@ -34,6 +36,10 @@ const IncidentRecorder = ({ user, onIncidentRecorded }) => {
         }
       )
     }
+
+    // Load emergency contacts
+    const contacts = dataService.getEmergencyContacts()
+    setEmergencyContacts(contacts)
 
     return () => {
       if (mediaStream) {
@@ -110,7 +116,7 @@ const IncidentRecorder = ({ user, onIncidentRecorded }) => {
   }
 
   const sendAlert = async () => {
-    if (alertSent) return
+    if (alertSent || emergencyContacts.length === 0) return
 
     const alertMessage = `🚨 POLICE ENCOUNTER ALERT 🚨
 Location: ${location ? `${location.latitude}, ${location.longitude}` : 'Unknown'}
@@ -120,15 +126,53 @@ Please monitor this situation.
 
 This is an automated alert from KnowMyRights.ai`
 
-    // In a real app, this would integrate with SMS or messaging APIs
-    console.log('Alert would be sent to contacts:', emergencyContacts)
-    console.log('Alert message:', alertMessage)
-    
-    setAlertSent(true)
-    setTimeout(() => setAlertSent(false), 30000) // Reset after 30 seconds
+    try {
+      await apiService.sendEmergencyAlert(emergencyContacts, location, alertMessage)
+      setAlertSent(true)
+      setTimeout(() => setAlertSent(false), 30000) // Reset after 30 seconds
+    } catch (error) {
+      console.error('Error sending alert:', error)
+      // Could add toast notification here
+    }
   }
 
-  const saveIncident = () => {
+  const uploadToIPFS = async (blob, type) => {
+    if (!blob) return null
+
+    setUploadingToIPFS(true)
+    try {
+      const file = new File([blob], `incident-${Date.now()}.${type === 'video' ? 'webm' : 'wav'}`, {
+        type: blob.type
+      })
+
+      const result = await apiService.uploadToIPFS(file, {
+        type: 'incident-recording',
+        recordingType: type,
+        userId: user.userId,
+        location: location
+      })
+
+      setIpfsUrl(result.url)
+      return result
+    } catch (error) {
+      console.error('Error uploading to IPFS:', error)
+      return null
+    } finally {
+      setUploadingToIPFS(false)
+    }
+  }
+
+  const saveIncident = async () => {
+    let ipfsResult = null
+    
+    // Upload recording to IPFS if available
+    if (recordedData.length > 0 && user.subscriptionStatus === 'premium') {
+      const blob = new Blob(recordedData, { 
+        type: recordingType === 'video' ? 'video/webm' : 'audio/wav' 
+      })
+      ipfsResult = await uploadToIPFS(blob, recordingType)
+    }
+
     const incident = {
       eventType: 'police_encounter',
       timestamp: new Date().toISOString(),
@@ -137,18 +181,31 @@ This is an automated alert from KnowMyRights.ai`
       location,
       userNotes: notes,
       recordedData: recordedData.length > 0 ? recordedData : null,
-      alertSent
+      alertSent,
+      ipfsUrl: ipfsResult?.url || null,
+      ipfsHash: ipfsResult?.ipfsHash || null
     }
 
-    onIncidentRecorded(incident)
-    
-    // Reset form
-    setRecordedData([])
-    setNotes('')
-    setRecordingTime(0)
-    setAlertSent(false)
-    
-    alert('Incident recorded successfully!')
+    // Save to data service
+    const savedIncident = dataService.saveIncident({
+      ...incident,
+      userId: user.userId
+    })
+
+    if (savedIncident) {
+      onIncidentRecorded(savedIncident)
+      
+      // Reset form
+      setRecordedData([])
+      setNotes('')
+      setRecordingTime(0)
+      setAlertSent(false)
+      setIpfsUrl(null)
+      
+      alert('Incident recorded successfully!')
+    } else {
+      alert('Error saving incident. Please try again.')
+    }
   }
 
   const formatTime = (seconds) => {

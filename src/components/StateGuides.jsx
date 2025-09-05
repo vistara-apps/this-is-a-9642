@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Lock, Book, MapPin, Clock, AlertCircle } from 'lucide-react'
+import { Lock, Book, MapPin, Clock, AlertCircle, Loader2 } from 'lucide-react'
+import apiService from '../services/api'
 
 const StateGuides = ({ user, setUser, onUpgradeNeeded }) => {
   const [guides, setGuides] = useState({})
@@ -81,11 +82,22 @@ const StateGuides = ({ user, setUser, onUpgradeNeeded }) => {
   }
 
   useEffect(() => {
-    // Simulate loading state guides
-    setTimeout(() => {
-      setGuides(stateGuides)
-      setLoading(false)
-    }, 1000)
+    const loadGuides = async () => {
+      setLoading(true)
+      try {
+        // Load enhanced state guides from API service
+        const loadedGuides = await apiService.loadStateGuides()
+        setGuides(loadedGuides)
+      } catch (error) {
+        console.error('Error loading state guides:', error)
+        // Fall back to mock data
+        setGuides(stateGuides)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadGuides()
   }, [])
 
   const isPremiumContent = (stateCode) => {
