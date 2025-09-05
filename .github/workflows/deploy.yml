@@ -27,25 +27,8 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           
-      - name: Build Success Notification
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `✅ **Build Successful!**
-              
-              The application has been built successfully and is ready for deployment.
-              
-              📦 **Build artifacts** are available in the \`dist/\` directory.
-              
-              To enable automatic Vercel deployments, configure the following secrets in your repository:
-              - \`VERCEL_TOKEN\`
-              - \`VERCEL_ORG_ID\`
-              - \`VERCEL_PROJECT_ID\`
-              
-              You can find these values in your [Vercel dashboard](https://vercel.com/dashboard).`
-            });
+      - name: Build Success
+        run: |
+          echo "✅ Build completed successfully!"
+          echo "📦 Build artifacts are available in the dist/ directory"
+          echo "🚀 Application is ready for deployment"
